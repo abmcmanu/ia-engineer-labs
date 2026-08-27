@@ -1,89 +1,90 @@
-# Lab Vector Embeddings & IR Metrics
+# Embeddings Lab
 
-Welcome to the comprehensive documentation for the lab dedicated to **Vector Search**, **Embedding**, and **Information Retrieval (IR)**.
+This is a small personal lab for learning how vector embeddings and semantic search work in practice. The goal is not to ship a product, it is to understand what happens between "a user types a question" and "the system returns relevant passages".
 
-## 1. Background & Context
+## Why this exists
 
-In most companies, knowledge is scattered across a multitude of documents in various formats:
-* **Technical notes & maintenance manuals** (PDF files)
-* **Reports & specifications** (DOCX files)
-* **Architecture guides & IT documentation** (Markdown / MD files)
+Keyword search has real limits. A search for "pipe leak" will not match a document that talks about "loss of water pressure", even though a human reading both would immediately see the connection. Keyword search also tends to return whole documents, leaving the reader to hunt through pages to find the one relevant paragraph.
 
-### The Business Challenge
-Employees waste a considerable amount of time searching for the exact information they need. Traditional search methods (keywords, `Ctrl+F`, BM25) fall short in the following cases:
-1. **Inability to handle synonyms:** A search for *“pipe leak”* will not return a document that mentions *“water pressure loss”*.
-2. **Ignores intent:** A question phrased as a natural sentence (*“How do I work remotely on Fridays?”*) fails when faced with structured regulatory text (*“Two-day remote work agreements”*).
-3. **Lack of semantic context:** Words are processed in isolation without understanding the overall meaning of the sentence.
+Embeddings address both problems. Instead of matching words, the text is converted into a vector, a list of numbers that represents its meaning. Two pieces of text that mean similar things end up close to each other in that vector space, even if they do not share a single word. Searching then becomes a matter of finding which vectors are closest to the vector of the query.
 
----
+## What the lab actually does
 
-## 2. Problem Statement & Solution Approach
+1. A set of documents (PDF, DOCX, Markdown) is loaded from `backend/datasets/`.
+2. Each document is split into chunks, since an embedding model can only look at a limited amount of text at once and a single vector for an 80 page report would be too vague to be useful.
+3. Each chunk is turned into a 384 dimension vector using `all-MiniLM-L6-v2` (a small, fast sentence transformer model).
+4. Vectors are kept in memory. There is no database here, this is intentionally the simplest possible setup.
+5. On a search request, the query is embedded the same way, then compared to every stored chunk using cosine similarity. The closest chunks are returned, ranked by score.
 
-### The Technical Problem
-> **How can we enable a computer system to learn and evaluate the semantic meaning of heterogeneous text in order to instantly extract the most relevant answer, regardless of how the query is phrased?**
+This is the retrieval half of what is usually called RAG (Retrieval-Augmented Generation). The lab stops there on purpose: it returns raw passages, not a written answer. Feeding those passages to a language model so it can write a proper answer in natural language is the generation half, and it is a natural next step for this project, but it is not part of what is being learned or tested here. Keeping retrieval isolated makes it much easier to see whether the search itself is actually good, without a language model smoothing over or hiding a bad result.
 
-### The Chosen Approach: Dense Retrieval
-Instead of matching keywords, we project all texts into a **multidimensional vector space**:
-1. **Vectorization (Embedding):** A deep learning neural network (`all-MiniLM-L6-v2`) transforms each text segment into a dense 384-dimensional numerical vector.
-2. **Geometric Proximity:** Texts that share a similar meaning are positioned close to one another in this space.
-3. **Cosine Similarity Search:** The user’s query is itself converted into a 384-D vector. The system calculates the angle (cosine) between the query vector and all vectors in the database to extract the closest matches.
+## Two ideas worth understanding: chunking and overlap
 
-## 3. Business Value & ROI of the Solution
+Chunking is how a document gets split before embedding. Too large and the resulting vector becomes an average of too many topics, so it stops matching anything precisely. Too small and you lose context. A common starting point is a few hundred words per chunk.
 
-Beyond purely algorithmic aspects, semantic search based on embeddings delivers direct economic value:
+Overlap means the end of one chunk is repeated at the start of the next one. Without it, a sentence that happens to sit right on a chunk boundary gets cut in half and its meaning can be lost in both pieces. A small overlap (a few dozen words) fixes that at the cost of some duplicated content in the index.
 
-### A. Operational Time Savings & Productivity (Direct ROI)
-* **60% reduction in search time:** Employees spend an average of 1.8 hours per day searching for information. Vector search allows them to find the exact passage in just a few seconds.
-* **Faster incident resolution:** Maintenance technicians or IT support staff can find the exact procedure without having to reread the entire technical documentation.
+## How search quality gets measured
 
-### B. Reducing Errors and Helpdesk Costs
-* **Reducing the Workload on Level 2/Level 3 Support:** By automatically answering common questions (HR procedures, validation criteria, security), the workload on expert teams is significantly reduced.
-* **Reduction in Costly Outages:** Immediate access to the correct operational instructions in the field minimizes mistakes and unplanned downtime.
+Once retrieval is in place, the natural question is: is it any good? Three metrics come up often:
 
-### C. Knowledge Capitalization & Transferability (Knowledge Management)
-* **Leveraging Unstructured Data:** Immediate use of PDF, Word, and Markdown formats without the need for re-entry or prior manual structuring.
-* **Onboarding New Employees:** Accelerating the learning curve for new hires through a one-stop shop for accessing company knowledge.
+Precision@K looks at the top K results and asks how many of them are actually relevant.
 
----
+MRR (Mean Reciprocal Rank) rewards systems that put the correct answer near the top of the list, not just somewhere in it.
 
-## 4. Contributions & Added Value of the Lab
+The cosine similarity score itself gives a rough sense of confidence. In this lab, scores above roughly 0.45 tend to indicate a real match, though this threshold depends heavily on the model and the data.
 
-This lab provides the key framework for building a RAG (*Retrieval-Augmented Generation*) system:
-* **Semantic Accuracy:** Accounts for synonyms and natural language queries.
-* **Extensible Architecture:** Clear separation between the processing pipeline (FastAPI) and the user interface (Angular).
-* **Integrated Metrics Evaluation:** Objective measurement of quality using scientific IR KPIs.
+## Project layout
 
----
+```
+embeddings-lab/
+  README.md
+  backend/
+    main.py            FastAPI app: extraction, chunking, embedding, search endpoint
+    datasets/           source documents used to build the in memory index
+    requirements.txt
+    Makefile
+    Dockerfile
+```
 
-## 5. Technologies Used in the Lab
+## Running it locally
 
----
-## 6. Detailed Technical Concepts: Chunks & Overlap
+You need Python 3.13 or newer.
 
-### A. Chunking
-An embedding model has a **context window** (e.g., a maximum of 512 tokens). Attempting to vectorize an entire 20-page document presents two major drawbacks:
-1. **Exceeding the model’s memory limit.**
-2. **Semantic dilution:** The vector becomes an overly generalized average in which specific details are lost.
-
-**Chunking** involves segmenting the document into fixed-size blocks (e.g., 150 words) to preserve the precision of the information.
-
-### B. Concepts of Overlap (Overlap)
-If the segmentation is strict, a key sentence located exactly at the boundary between two chunks may be split in two. **Overlap** (a 30-word overlap) involves duplicating the end of Chunk N at the beginning of Chunk N+1, ensuring that no critical information is truncated at the boundaries.
-
----
-
-## 7. Evaluation Metrics (KPIs)
-
-1. **Precision@K:** Accuracy ratio of the first K results (e.g., K=3).
-2. **MRR (Mean Reciprocal Rank):** Evaluates the system’s ability to place the best result at the very top of the list.
-3. **Cosine Similarity Score:** Defines the proximity in orientation between the query vector and the document vector (recommended threshold ≥ 0.45).
-
----
-
-## 8. Execution Guide
-
-### Launching the Backend (Python)
 ```bash
 cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+make install
+make run
+```
+
+`make run` starts the API on port 5050 with auto reload. `make dev` does the same thing directly through uvicorn if you prefer. Either way, once it is up:
+
+```
+http://localhost:5050/docs
+```
+
+opens the interactive Swagger UI, where `POST /search` can be tried directly.
+
+## Running it with Docker
+
+```bash
+cd backend
+make docker-build
+make docker-run
+```
+
+The embedding model is downloaded once at build time and baked into the image, so starting the container does not require a network call to Hugging Face. The API is reachable on `http://localhost:5050` once the container is running.
+
+## Calling the search endpoint
+
+```bash
+curl -X POST http://localhost:5050/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "how does remote work policy handle Fridays", "top_k": 3}'
+```
+
+The response is a ranked list of the most relevant chunks, each with its source filename, the text itself, and its similarity score. No answer is generated, the point of this lab is to see the retrieval step working on its own.
+
+## What is deliberately out of scope
+
+There is no vector database, no reranking step, no authentication, and no generation step. All of that is normal for a production RAG system, but adding it here would make it harder to isolate what embeddings and retrieval alone can and cannot do, which is the actual point of this lab.
